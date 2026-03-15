@@ -151,6 +151,7 @@ const MODELSTUDIO_MODEL_CATALOG: ReadonlyArray<ProviderModelConfig> = [
   {
     id: "qwen3.5-plus",
     name: "qwen3.5-plus",
+    api: "openai-responses",
     reasoning: false,
     input: ["text", "image"],
     cost: MODELSTUDIO_DEFAULT_COST,
@@ -178,6 +179,7 @@ const MODELSTUDIO_MODEL_CATALOG: ReadonlyArray<ProviderModelConfig> = [
   {
     id: "qwen3-coder-plus",
     name: "qwen3-coder-plus",
+    api: "openai-responses",
     reasoning: false,
     input: ["text"],
     cost: MODELSTUDIO_DEFAULT_COST,

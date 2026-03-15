@@ -1,14 +1,17 @@
 import type { StreamFn } from "@mariozechner/pi-agent-core";
 import type { SimpleStreamOptions } from "@mariozechner/pi-ai";
 import { streamSimple } from "@mariozechner/pi-ai";
+import { appendRawStream } from "../pi-embedded-subscribe.raw-stream.js";
 import { log } from "./logger.js";
 import { streamWithPayloadPatch } from "./stream-payload-utils.js";
 
 type OpenAIServiceTier = "auto" | "default" | "flex" | "priority";
 type OpenAIReasoningEffort = "low" | "medium" | "high";
+type NativeResponsesTool = Record<string, unknown> & { type: string };
 
 const OPENAI_RESPONSES_APIS = new Set(["openai-responses"]);
 const OPENAI_RESPONSES_PROVIDERS = new Set(["openai", "azure-openai", "azure-openai-responses"]);
+const RESPONSES_TOOL_APIS = new Set(["openai-responses", "openai-codex-responses"]);
 
 function isDirectOpenAIBaseUrl(baseUrl: unknown): boolean {
   if (typeof baseUrl !== "string" || !baseUrl.trim()) {
@@ -211,6 +214,48 @@ export function resolveOpenAIFastMode(
   return normalized;
 }
 
+function isNativeResponsesTool(value: unknown): value is NativeResponsesTool {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const toolType = (value as { type?: unknown }).type;
+  return typeof toolType === "string" && toolType.trim().length > 0;
+}
+
+function cloneNativeResponsesTools(
+  tools: ReadonlyArray<NativeResponsesTool>,
+): NativeResponsesTool[] {
+  return tools.map((tool) => ({ ...tool }));
+}
+
+function cloneResponsesPayloadForDebug(
+  payloadObj: Record<string, unknown>,
+): Record<string, unknown> {
+  try {
+    return structuredClone(payloadObj);
+  } catch {
+    try {
+      return JSON.parse(JSON.stringify(payloadObj)) as Record<string, unknown>;
+    } catch {
+      return { ...payloadObj };
+    }
+  }
+}
+
+export function resolveNativeResponsesTools(
+  extraParams: Record<string, unknown> | undefined,
+): NativeResponsesTool[] | undefined {
+  const raw = extraParams?.tools;
+  if (raw === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(raw) || raw.some((tool) => !isNativeResponsesTool(tool))) {
+    log.warn("ignoring invalid native responses tools param: expected an array of tool objects");
+    return undefined;
+  }
+  return cloneNativeResponsesTools(raw);
+}
+
 function resolveFastModeReasoningEffort(modelId: unknown): OpenAIReasoningEffort {
   if (typeof modelId !== "string") {
     return "low";
@@ -284,6 +329,52 @@ export function createOpenAIResponsesContextManagementWrapper(
         }
         return originalOnPayload?.(payload, model);
       },
+    });
+  };
+}
+
+export function createNativeResponsesToolsWrapper(
+  baseStreamFn: StreamFn | undefined,
+  nativeTools: ReadonlyArray<NativeResponsesTool>,
+): StreamFn {
+  const underlying = baseStreamFn ?? streamSimple;
+  return (model, context, options) => {
+    if (!RESPONSES_TOOL_APIS.has(model.api)) {
+      return underlying(model, context, options);
+    }
+    return streamWithPayloadPatch(underlying, model, context, options, (payloadObj) => {
+      const configuredTools = cloneNativeResponsesTools(nativeTools);
+      if (configuredTools.length === 0) {
+        return;
+      }
+      if (payloadObj.tools === undefined) {
+        payloadObj.tools = configuredTools;
+        return;
+      }
+      if (Array.isArray(payloadObj.tools)) {
+        payloadObj.tools = [...payloadObj.tools, ...configuredTools];
+        return;
+      }
+      log.warn("skipping native responses tools merge because payload.tools is not an array");
+    });
+  };
+}
+
+export function createResponsesPayloadDebugWrapper(baseStreamFn: StreamFn | undefined): StreamFn {
+  const underlying = baseStreamFn ?? streamSimple;
+  return (model, context, options) => {
+    if (!RESPONSES_TOOL_APIS.has(model.api)) {
+      return underlying(model, context, options);
+    }
+    return streamWithPayloadPatch(underlying, model, context, options, (payloadObj) => {
+      appendRawStream({
+        ts: Date.now(),
+        event: "responses_payload",
+        provider: typeof model.provider === "string" ? model.provider : undefined,
+        model: typeof model.id === "string" ? model.id : undefined,
+        api: typeof model.api === "string" ? model.api : undefined,
+        payload: cloneResponsesPayloadForDebug(payloadObj),
+      });
     });
   };
 }

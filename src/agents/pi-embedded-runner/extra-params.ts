@@ -23,10 +23,13 @@ import {
 } from "./moonshot-stream-wrappers.js";
 import {
   createCodexDefaultTransportWrapper,
+  createNativeResponsesToolsWrapper,
   createOpenAIDefaultTransportWrapper,
   createOpenAIFastModeWrapper,
+  createResponsesPayloadDebugWrapper,
   createOpenAIResponsesContextManagementWrapper,
   createOpenAIServiceTierWrapper,
+  resolveNativeResponsesTools,
   resolveOpenAIFastMode,
   resolveOpenAIServiceTier,
 } from "./openai-stream-wrappers.js";
@@ -459,6 +462,14 @@ export function applyExtraParamsToAgent(
     agent.streamFn = createOpenAIServiceTierWrapper(agent.streamFn, openAIServiceTier);
   }
 
+  const nativeResponsesTools = resolveNativeResponsesTools(merged);
+  if (nativeResponsesTools?.length) {
+    log.debug(
+      `applying native responses tools (${nativeResponsesTools.length}) for ${provider}/${modelId}`,
+    );
+    agent.streamFn = createNativeResponsesToolsWrapper(agent.streamFn, nativeResponsesTools);
+  }
+
   // Work around upstream pi-ai hardcoding `store: false` for Responses API.
   // Force `store=true` for direct OpenAI Responses models and auto-enable
   // server-side compaction for compatible OpenAI Responses payloads.
@@ -482,4 +493,8 @@ export function applyExtraParamsToAgent(
       log.warn(`ignoring invalid parallel_tool_calls param: ${summary}`);
     }
   }
+
+  // Keep the payload debug tap last so raw stream captures the final request
+  // after all provider-specific payload wrappers have finished mutating it.
+  agent.streamFn = createResponsesPayloadDebugWrapper(agent.streamFn);
 }

@@ -23,8 +23,12 @@ describe("Model Studio implicit provider", () => {
   it("should build the static Model Studio provider catalog", () => {
     const provider = buildModelStudioProvider();
     const modelIds = provider.models.map((model) => model.id);
+    const defaultQwen = provider.models.find((model) => model.id === "qwen3.5-plus");
+    const coderQwen = provider.models.find((model) => model.id === "qwen3-coder-plus");
     expect(provider.api).toBe("openai-completions");
     expect(provider.baseUrl).toBe("https://coding-intl.dashscope.aliyuncs.com/v1");
+    expect(defaultQwen?.api).toBe("openai-responses");
+    expect(coderQwen?.api).toBe("openai-responses");
     expect(modelIds).toContain("qwen3.5-plus");
     expect(modelIds).toContain("qwen3-coder-plus");
     expect(modelIds).toContain("kimi-k2.5");

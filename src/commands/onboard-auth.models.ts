@@ -238,9 +238,19 @@ export const MODELSTUDIO_DEFAULT_COST = {
   cacheWrite: 0,
 };
 
+type ModelStudioCatalogEntry = {
+  name: string;
+  api?: ModelDefinitionConfig["api"];
+  reasoning: boolean;
+  input: readonly ("text" | "image")[];
+  contextWindow: number;
+  maxTokens: number;
+};
+
 const MODELSTUDIO_MODEL_CATALOG = {
   "qwen3.5-plus": {
     name: "qwen3.5-plus",
+    api: "openai-responses",
     reasoning: false,
     input: ["text", "image"],
     contextWindow: 1000000,
@@ -262,6 +272,7 @@ const MODELSTUDIO_MODEL_CATALOG = {
   },
   "qwen3-coder-plus": {
     name: "qwen3-coder-plus",
+    api: "openai-responses",
     reasoning: false,
     input: ["text"],
     contextWindow: 1000000,
@@ -295,23 +306,27 @@ const MODELSTUDIO_MODEL_CATALOG = {
     contextWindow: 262144,
     maxTokens: 32768,
   },
-} as const;
+} as const satisfies Record<string, ModelStudioCatalogEntry>;
 
 type ModelStudioCatalogId = keyof typeof MODELSTUDIO_MODEL_CATALOG;
 
 export function buildModelStudioModelDefinition(params: {
   id: string;
   name?: string;
+  api?: ModelDefinitionConfig["api"];
   reasoning?: boolean;
   input?: string[];
   cost?: ModelDefinitionConfig["cost"];
   contextWindow?: number;
   maxTokens?: number;
 }): ModelDefinitionConfig {
-  const catalog = MODELSTUDIO_MODEL_CATALOG[params.id as ModelStudioCatalogId];
+  const catalog = MODELSTUDIO_MODEL_CATALOG[params.id as ModelStudioCatalogId] as
+    | ModelStudioCatalogEntry
+    | undefined;
   return {
     id: params.id,
     name: params.name ?? catalog?.name ?? params.id,
+    api: params.api ?? catalog?.api,
     reasoning: params.reasoning ?? catalog?.reasoning ?? false,
     input:
       (params.input as ("text" | "image")[]) ??

@@ -587,6 +587,112 @@ describe("applyExtraParamsToAgent", () => {
     }
   });
 
+  it("injects configured model-native tools into Responses payloads", () => {
+    const payload = runResponsesPayloadMutationCase({
+      applyProvider: "custom-qwen",
+      applyModelId: "qwen3.5-plus",
+      cfg: {
+        agents: {
+          defaults: {
+            models: {
+              "custom-qwen/qwen3.5-plus": {
+                params: {
+                  tools: [{ type: "web_search_image" }],
+                },
+              },
+            },
+          },
+        },
+      },
+      model: {
+        api: "openai-responses",
+        provider: "custom-qwen",
+        id: "qwen3.5-plus",
+        baseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+      } as unknown as Model<"openai-responses">,
+      payload: {},
+    });
+
+    expect(payload.tools).toEqual([{ type: "web_search_image" }]);
+  });
+
+  it("merges configured model-native tools with existing function tools", () => {
+    const payload = runResponsesPayloadMutationCase({
+      applyProvider: "custom-qwen",
+      applyModelId: "qwen3-coder-plus",
+      cfg: {
+        agents: {
+          defaults: {
+            models: {
+              "custom-qwen/qwen3-coder-plus": {
+                params: {
+                  tools: [
+                    { type: "web_search" },
+                    { type: "web_extractor" },
+                    { type: "code_interpreter" },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      },
+      model: {
+        api: "openai-responses",
+        provider: "custom-qwen",
+        id: "qwen3-coder-plus",
+        baseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+      } as unknown as Model<"openai-responses">,
+      payload: {
+        tools: [{ type: "function", name: "read", description: "Read files", parameters: {} }],
+      },
+    });
+
+    expect(payload.tools).toEqual([
+      { type: "function", name: "read", description: "Read files", parameters: {} },
+      { type: "web_search" },
+      { type: "web_extractor" },
+      { type: "code_interpreter" },
+    ]);
+  });
+
+  it("warns and skips invalid model-native tools params", () => {
+    const warnSpy = vi.spyOn(log, "warn").mockImplementation(() => undefined);
+    try {
+      const payload = runResponsesPayloadMutationCase({
+        applyProvider: "custom-qwen",
+        applyModelId: "qwen3.5-plus",
+        cfg: {
+          agents: {
+            defaults: {
+              models: {
+                "custom-qwen/qwen3.5-plus": {
+                  params: {
+                    tools: "web_search_image",
+                  },
+                },
+              },
+            },
+          },
+        },
+        model: {
+          api: "openai-responses",
+          provider: "custom-qwen",
+          id: "qwen3.5-plus",
+          baseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+        } as unknown as Model<"openai-responses">,
+        payload: {},
+      });
+
+      expect(payload).not.toHaveProperty("tools");
+      expect(warnSpy).toHaveBeenCalledWith(
+        "ignoring invalid native responses tools param: expected an array of tool objects",
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
   it("normalizes thinking=off to null for SiliconFlow Pro models", () => {
     const payloads: Record<string, unknown>[] = [];
     const baseStreamFn: StreamFn = (_model, _context, options) => {
